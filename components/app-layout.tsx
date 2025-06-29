@@ -151,26 +151,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-background w-full h-screen flex flex-col">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto px-4">
-          <div className="flex h-10 items-center justify-between">
+        <div className="mx-auto px-6">
+          <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <div className="flex items-center space-x-4">
-              <Link href="/projects" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-                <h1 className="text-xl font-semibold">Infragenie</h1>
+            <div className="flex items-center space-x-6">
+              <Link href="/projects" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Terminal className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <h1 className="text-xl font-bold">Infragenie</h1>
               </Link>
 
               {/* Breadcrumb Navigation - Only show if not on credentials page */}
               {!isCredentialsPage && breadcrumbs.length > 0 && (
-                <nav className="hidden md:flex items-center space-x-2 ml-4">
+                <nav className="hidden md:flex items-center space-x-2">
                   <div className="h-6 w-px bg-border"></div>
                   {breadcrumbs.map((crumb, index) => (
                     <div key={crumb.href} className="flex items-center space-x-2">
-                      {index > 0 && <h1 className="text-muted-foreground" >/</h1>}
+                      {index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                       <Link
                         href={crumb.href}
                         className={cn(
-                          "text-sm font-medium transition-colors hover:text-primary px-2 py-1 rounded-md",
-                          crumb.isActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground",
+                          "text-sm font-medium transition-colors hover:text-primary px-3 py-2 rounded-md",
+                          crumb.isActive 
+                            ? "text-primary bg-primary/10 font-semibold" 
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                         )}
                       >
                         {crumb.label}
@@ -200,9 +205,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               {/* Profile Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">{user ? getUserInitials(user.name) : "U"}</AvatarFallback>
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="text-sm font-semibold">{user ? getUserInitials(user.name) : "U"}</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>

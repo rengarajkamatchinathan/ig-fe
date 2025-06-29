@@ -8,7 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FolderPlus, Plus, Trash2, Search, Cloud, Settings, Terminal, Loader2 } from "lucide-react"
+import { FolderPlus, Plus, Trash2, Search, Cloud, Settings, Terminal, Loader2, Calendar, Building2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ModeToggle } from "@/components/mode-toggle"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
 
 interface Project {
@@ -45,6 +47,32 @@ const PROVIDER_NAME_MAP: Record<number, "aws" | "azure" | "gcp"> = {
   2: "azure",
   3: "gcp",
 };
+
+const getProviderIcon = (provider: string) => {
+  switch (provider) {
+    case "aws":
+      return "🟠"
+    case "azure":
+      return "🔵"
+    case "gcp":
+      return "🔴"
+    default:
+      return "☁️"
+  }
+}
+
+const getProviderColor = (provider: string) => {
+  switch (provider) {
+    case "aws":
+      return "bg-orange-100 text-orange-800 border-orange-200"
+    case "azure":
+      return "bg-blue-100 text-blue-800 border-blue-200"
+    case "gcp":
+      return "bg-red-100 text-red-800 border-red-200"
+    default:
+      return "bg-gray-100 text-gray-800 border-gray-200"
+  }
+}
 
 export function ProjectsList() {
   const router = useRouter()
@@ -195,154 +223,188 @@ export function ProjectsList() {
   }
 
   return (
-    <div className="bg-background h-full">
-      <div className="flex h-full">
-        {/* Sidebar */}
-        <div className="w-80 border-r bg-muted/30 flex flex-col">
-          {/* Header */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Your Projects</h2>
-              <Dialog open={isCreating} onOpenChange={setIsCreating}>
-                <DialogTrigger asChild>
-                  <Button size="sm" className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    New
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Project</DialogTitle>
-                    <DialogDescription>Enter the details for your new Terraform project.</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="project-name">Project Name</Label>
-                      <Input
-                        id="project-name"
-                        placeholder="My Infrastructure Project"
-                        value={newProject.name}
-                        onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="project-description">Description (Optional)</Label>
-                      <Input
-                        id="project-description"
-                        placeholder="A brief description of your project"
-                        value={newProject.description}
-                        onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="project-provider">Cloud Provider</Label>
-                      <Select
-                        value={newProject.provider}
-                        onValueChange={(value: "aws" | "azure" | "gcp") =>
-                          setNewProject({ ...newProject, provider: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="aws">Amazon Web Services (AWS)</SelectItem>
-                          <SelectItem value="azure">Microsoft Azure</SelectItem>
-                          <SelectItem value="gcp">Google Cloud Platform (GCP)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreating(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateProject}>Create Project</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search projects..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+    <div className="bg-background min-h-screen">
+      <div className="container mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+            <p className="text-muted-foreground mt-2">
+              Manage your infrastructure projects and workspaces
+            </p>
           </div>
+          <Dialog open={isCreating} onOpenChange={setIsCreating}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 shadow-sm">
+                <Plus className="h-4 w-4" />
+                New Project
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Create New Project</DialogTitle>
+                <DialogDescription>
+                  Set up a new infrastructure project with your preferred cloud provider.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="project-name">Project Name *</Label>
+                  <Input
+                    id="project-name"
+                    placeholder="My Infrastructure Project"
+                    value={newProject.name}
+                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="project-description">Description</Label>
+                  <Input
+                    id="project-description"
+                    placeholder="A brief description of your project"
+                    value={newProject.description}
+                    onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="project-provider">Cloud Provider *</Label>
+                  <Select
+                    value={newProject.provider}
+                    onValueChange={(value: "aws" | "azure" | "gcp") =>
+                      setNewProject({ ...newProject, provider: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="aws">
+                        <div className="flex items-center gap-2">
+                          <span>🟠</span>
+                          Amazon Web Services (AWS)
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="azure">
+                        <div className="flex items-center gap-2">
+                          <span>🔵</span>
+                          Microsoft Azure
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="gcp">
+                        <div className="flex items-center gap-2">
+                          <span>🔴</span>
+                          Google Cloud Platform (GCP)
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreating(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateProject}>Create Project</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
 
-          {/* Projects List */}
-          <div className="flex-1 overflow-auto">
-            {filteredProjects.length === 0 ? (
-              <div className="p-4 text-center text-muted-foreground">
-                {projects.length === 0 ? "No projects yet" : "No projects match your search"}
+        {/* Search and Filters */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
+        {/* Projects Grid */}
+        {filteredProjects.length === 0 ? (
+          <div className="text-center py-16">
+            {projects.length === 0 ? (
+              <div className="max-w-md mx-auto">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Building2 className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No projects yet</h3>
+                <p className="text-muted-foreground mb-6">
+                  Get started by creating your first infrastructure project.
+                </p>
+                <Dialog open={isCreating} onOpenChange={setIsCreating}>
+                  <DialogTrigger asChild>
+                    <Button className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Create Your First Project
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
               </div>
             ) : (
-              <div className="p-2 space-y-1">
-                {filteredProjects.map((project, idx) => (
-                  <Link key={project.id || idx} href={`/projects/${project.id}`}>
-                    <div className="p-3 rounded-lg hover:bg-accent cursor-pointer group transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium truncate group-hover:text-primary transition-colors">
-                            {project.name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground truncate mt-1">
-                            {project.description || "No description"}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="inline-flex items-center gap-1 text-xs bg-secondary px-2 py-1 rounded">
-                              <Cloud className="h-3 w-3" />
-                              {project.provider}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {project.createdAt && !isNaN(project.createdAt.getTime())
-                                ? project.createdAt.toLocaleDateString()
-                                : "-"}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => handleDeleteProject(project.id, e)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+              <div className="max-w-md mx-auto">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No projects found</h3>
+                <p className="text-muted-foreground">
+                  Try adjusting your search terms or create a new project.
+                </p>
               </div>
             )}
           </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <FolderPlus className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Welcome to Infragenie</h3>
-            <p className="text-muted-foreground mb-6">
-              Select a project from the sidebar to get started, or create a new project to begin building your
-              infrastructure.
-            </p>
-            <Dialog open={isCreating} onOpenChange={setIsCreating}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Create Your First Project
-                </Button>
-              </DialogTrigger>
-            </Dialog>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredProjects.map((project, idx) => (
+              <Link key={project.id || idx} href={`/projects/${project.id}`}>
+                <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 border-2 hover:border-primary/20 group">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg truncate group-hover:text-primary transition-colors">
+                          {project.name}
+                        </CardTitle>
+                        <CardDescription className="mt-1 line-clamp-2">
+                          {project.description || "No description provided"}
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => handleDeleteProject(project.id, e)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <Badge 
+                        variant="secondary" 
+                        className={cn("gap-1", getProviderColor(project.provider))}
+                      >
+                        <span>{getProviderIcon(project.provider)}</span>
+                        {project.provider.toUpperCase()}
+                      </Badge>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        <span>
+                          {project.createdAt && !isNaN(project.createdAt.getTime())
+                            ? project.createdAt.toLocaleDateString()
+                            : "-"}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
           </div>
-        </div>
-
+        )}
       </div>
     </div>
   )
