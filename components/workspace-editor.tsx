@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import {
@@ -32,6 +32,10 @@ import {
   Minimize2,
   PanelLeftClose,
   PanelLeft,
+  GripVertical,
+  Clock,
+  Zap,
+  Activity,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -113,6 +117,8 @@ const debug = (message: string, data?: any) => {
 export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const resizeRef = useRef<HTMLDivElement>(null)
   
   // Core state
   const [project, setProject] = useState<any>(null)
@@ -126,7 +132,9 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false)
   const [showAIPrompt, setShowAIPrompt] = useState<boolean | null>(null)
-  const [isChatVisible, setIsChatVisible] = useState(true) // Always show chat by default
+  const [isChatVisible, setIsChatVisible] = useState(true)
+  const [chatWidth, setChatWidth] = useState(320) // Default chat width
+  const [isResizing, setIsResizing] = useState(false)
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -138,6 +146,39 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null)
   
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+  // Auto-scroll to bottom of chat when new messages are added
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [chatMessages, isGenerating])
+
+  // Handle chat panel resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      
+      const newWidth = e.clientX
+      if (newWidth >= 280 && newWidth <= 600) { // Min 280px, Max 600px
+        setChatWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   // Effects
   useEffect(() => {
@@ -585,6 +626,32 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
     return flatFiles;
   };
 
+  const getProviderIcon = (provider: string) => {
+    switch (provider) {
+      case "aws":
+        return "🟠"
+      case "azure":
+        return "🔵"
+      case "gcp":
+        return "🔴"
+      default:
+        return "☁️"
+    }
+  }
+
+  const getProviderColor = (provider: string) => {
+    switch (provider) {
+      case "aws":
+        return "bg-orange-100 text-orange-800 border-orange-200"
+      case "azure":
+        return "bg-blue-100 text-blue-800 border-blue-200"
+      case "gcp":
+        return "bg-red-100 text-red-800 border-red-200"
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200"
+    }
+  }
+
   // Loading state
   if (!project || !workspace || showAIPrompt === null) {
     return (
@@ -690,38 +757,70 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
   return (
     <div className="min-h-screen bg-background">
       <div className="w-full h-screen flex flex-col">
-        {/* Workspace Header */}
-        <div className="border-b bg-card/50 backdrop-blur-sm">
-          <div className="px-6 py-4">
+        {/* Enhanced Workspace Header */}
+        <div className="border-b bg-gradient-to-r from-card/80 to-card/60 backdrop-blur-sm">
+          <div className="px-6 py-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h1 className="text-xl font-semibold">{workspace?.name}</h1>
-                  <p className="text-sm text-muted-foreground">{project?.name} • {project?.provider?.toUpperCase()}</p>
+              {/* Left Section - Workspace Info */}
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-12 h-12 rounded-xl flex items-center justify-center shadow-sm",
+                    getProviderColor(project?.provider || "aws")
+                  )}>
+                    <span className="text-xl">{getProviderIcon(project?.provider || "aws")}</span>
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground">{workspace?.name}</h1>
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-sm text-muted-foreground">{project?.name}</p>
+                      <Separator orientation="vertical" className="h-4" />
+                      <Badge variant="outline" className="gap-1 text-xs">
+                        <Activity className="h-3 w-3" />
+                        {project?.provider?.toUpperCase()}
+                      </Badge>
+                      <Badge variant="secondary" className="gap-1 text-xs">
+                        <Code2 className="h-3 w-3" />
+                        v{version}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
-                <Badge variant="secondary" className="gap-1">
-                  <Code2 className="h-3 w-3" />
-                  Version {version}
-                </Badge>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Right Section - Actions */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 px-3 py-2 rounded-lg">
+                  <Clock className="h-3 w-3" />
+                  Last updated: {workspace?.lastModified?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) || "N/A"}
+                </div>
+                
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setIsChatVisible(!isChatVisible)}
-                  className="gap-2"
+                  className="gap-2 shadow-sm"
                 >
                   {isChatVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
                   {isChatVisible ? "Hide Chat" : "Show Chat"}
                 </Button>
+                
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setIsAnalysisOpen(true)}
-                  className="gap-2"
+                  className="gap-2 shadow-sm"
                 >
                   <BarChart3 className="h-4 w-4" />
                   Analyze
+                </Button>
+
+                <Button
+                  size="sm"
+                  className="gap-2 bg-primary hover:bg-primary/90 shadow-sm"
+                >
+                  <Zap className="h-4 w-4" />
+                  Deploy
                 </Button>
               </div>
             </div>
@@ -730,108 +829,131 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Chat Panel - Always visible when isChatVisible is true */}
+          {/* Resizable Chat Panel */}
           {isChatVisible && (
-            <div className="w-80 bg-card border-r flex flex-col">
-              <div className="border-b px-4 py-3">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  AI Chat
-                </h3>
-              </div>
-              <ScrollArea className="flex-1 px-4">
-                <div className="space-y-6 py-4">
-                  {chatMessages.map((message, index) => (
-                    <div key={message.id} className="space-y-3">
-                      <div className="flex gap-3 items-start">
-                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                          <User className="h-4 w-4 text-primary-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-sm font-medium">You</span>
-                            <span className="text-xs text-muted-foreground">
-                              {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                          </div>
-                          <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                            {message.content}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Version Control */}
-                      <div className="ml-11">
-                        <Card className="border-dashed">
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <FileClock className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm font-medium">Version {index + 1}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleVersionTerraformView(message.id, index + 1)}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  View
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleVersionTerraformRestore(message.id, index + 1)}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  Restore
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-                  ))}
-
-                  {isGenerating && (
-                    <div className="flex gap-3 items-start">
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
-                        <Bot className="h-4 w-4" />
-                      </div>
-                      <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
-                        <Loader2 className="animate-spin h-4 w-4" />
-                        <span className="text-sm">Generating response...</span>
-                      </div>
-                    </div>
-                  )}
+            <div className="flex">
+              <div 
+                className="bg-card border-r flex flex-col"
+                style={{ width: `${chatWidth}px` }}
+              >
+                <div className="border-b px-4 py-3 bg-muted/30">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    AI Chat
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      {chatMessages.length} messages
+                    </Badge>
+                  </h3>
                 </div>
-              </ScrollArea>
+                
+                <ScrollArea className="flex-1 px-4" ref={chatScrollRef}>
+                  <div className="space-y-6 py-4">
+                    {chatMessages.map((message, index) => (
+                      <div key={message.id} className="space-y-3">
+                        <div className="flex gap-3 items-start">
+                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                            <User className="h-4 w-4 text-primary-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-medium">You</span>
+                              <span className="text-xs text-muted-foreground">
+                                {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <div className="bg-muted/50 rounded-lg p-3 text-sm leading-relaxed">
+                              {message.content}
+                            </div>
+                          </div>
+                        </div>
 
-              {/* Chat Input */}
-              <div className="border-t p-4">
-                <div className="flex gap-2">
-                  <Textarea
-                    placeholder="Describe your infrastructure needs..."
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault()
-                        handleChatSubmit()
-                      }
-                    }}
-                    className="min-h-[60px] resize-none"
-                    disabled={isGenerating}
-                  />
-                  <Button
-                    onClick={handleChatSubmit}
-                    size="icon"
-                    disabled={isGenerating || !chatInput.trim()}
-                    className="self-end"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                        {/* Version Control */}
+                        <div className="ml-11">
+                          <Card className="border-dashed bg-muted/20">
+                            <CardContent className="p-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <FileClock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm font-medium">Version {index + 1}</span>
+                                  {index + 1 === version && (
+                                    <Badge variant="default" className="text-xs">Current</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleVersionTerraformView(message.id, index + 1)}
+                                    className="h-7 px-2 text-xs"
+                                  >
+                                    View
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleVersionTerraformRestore(message.id, index + 1)}
+                                    className="h-7 px-2 text-xs"
+                                  >
+                                    Restore
+                                  </Button>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </div>
+                    ))}
+
+                    {isGenerating && (
+                      <div className="flex gap-3 items-start">
+                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
+                          <Loader2 className="animate-spin h-4 w-4" />
+                          <span className="text-sm">Generating response...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+
+                {/* Chat Input */}
+                <div className="border-t p-4 bg-muted/20">
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Describe your infrastructure needs..."
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault()
+                          handleChatSubmit()
+                        }
+                      }}
+                      className="min-h-[60px] resize-none"
+                      disabled={isGenerating}
+                    />
+                    <Button
+                      onClick={handleChatSubmit}
+                      size="icon"
+                      disabled={isGenerating || !chatInput.trim()}
+                      className="self-end"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Resize Handle */}
+              <div
+                ref={resizeRef}
+                className="w-1 bg-border hover:bg-primary/50 cursor-col-resize transition-colors"
+                onMouseDown={() => setIsResizing(true)}
+              >
+                <div className="w-full h-full flex items-center justify-center">
+                  <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 hover:opacity-100 transition-opacity" />
                 </div>
               </div>
             </div>
@@ -850,10 +972,13 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
               <div className="flex-1 flex overflow-hidden">
                 {/* File Explorer */}
                 <div className="w-80 bg-muted/30 border-r flex flex-col overflow-hidden">
-                  <div className="p-4 border-b">
+                  <div className="p-4 border-b bg-muted/50">
                     <h3 className="font-semibold flex items-center gap-2">
                       <Folder className="h-4 w-4" />
                       Project Files
+                      <Badge variant="secondary" className="ml-auto text-xs">
+                        {Object.keys(files).length} files
+                      </Badge>
                     </h3>
                   </div>
                   <ScrollArea className="flex-1 p-3">
@@ -870,6 +995,11 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
                     <div className="flex items-center gap-3">
                       <FileCode className="h-4 w-4 text-blue-500" />
                       <span className="font-medium">{selectedFile || "No file selected"}</span>
+                      {selectedFile && (
+                        <Badge variant="outline" className="text-xs">
+                          {getFileLanguage(selectedFile)}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <DropdownMenu>
