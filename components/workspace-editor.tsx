@@ -30,6 +30,8 @@ import {
   Settings,
   Maximize2,
   Minimize2,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -124,7 +126,7 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false)
   const [showAIPrompt, setShowAIPrompt] = useState<boolean | null>(null)
-  const [isChatExpanded, setIsChatExpanded] = useState(false)
+  const [isChatVisible, setIsChatVisible] = useState(true) // Always show chat by default
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -615,7 +617,7 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
               <CardContent className="p-8">
                 <div className="space-y-6">
                   <div>
-                    <Label className="text-base font-medium mb-3 block">What would you like to build?</Label>
+                    <label className="text-base font-medium mb-3 block">What would you like to build?</label>
                     <Textarea
                       placeholder="Describe your infrastructure... (e.g., 'Create a VPC with public and private subnets, an EKS cluster, and RDS database')"
                       value={chatInput}
@@ -706,11 +708,11 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsChatExpanded(!isChatExpanded)}
+                  onClick={() => setIsChatVisible(!isChatVisible)}
                   className="gap-2"
                 >
-                  <MessageSquare className="h-4 w-4" />
-                  {isChatExpanded ? "Hide Chat" : "Show Chat"}
+                  {isChatVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+                  {isChatVisible ? "Hide Chat" : "Show Chat"}
                 </Button>
                 <Button
                   variant="outline"
@@ -726,24 +728,16 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
           </div>
         </div>
 
+        {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Chat Panel */}
-          {isChatExpanded && (
-            <div className="w-96 bg-card border-r flex flex-col">
+          {/* Chat Panel - Always visible when isChatVisible is true */}
+          {isChatVisible && (
+            <div className="w-80 bg-card border-r flex flex-col">
               <div className="border-b px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    AI Chat
-                  </h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsChatExpanded(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                <h3 className="font-semibold flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  AI Chat
+                </h3>
               </div>
               <ScrollArea className="flex-1 px-4">
                 <div className="space-y-6 py-4">
@@ -853,9 +847,9 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
                 </div>
               </div>
             ) : (
-              <div className="flex-1 grid grid-cols-12 overflow-hidden">
+              <div className="flex-1 flex overflow-hidden">
                 {/* File Explorer */}
-                <div className="col-span-3 bg-muted/30 border-r flex flex-col overflow-hidden">
+                <div className="w-80 bg-muted/30 border-r flex flex-col overflow-hidden">
                   <div className="p-4 border-b">
                     <h3 className="font-semibold flex items-center gap-2">
                       <Folder className="h-4 w-4" />
@@ -870,7 +864,7 @@ export function WorkspaceEditor({ projectId, workspaceId }: WorkspaceEditorProps
                 </div>
 
                 {/* Code Editor */}
-                <div className="col-span-9 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden">
                   {/* File Header */}
                   <div className="border-b bg-muted/50 px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
