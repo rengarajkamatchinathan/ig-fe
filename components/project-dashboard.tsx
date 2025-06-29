@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, Calendar, Cloud, FolderOpen, Users, GitBranch, ArrowLeft, Settings, Terminal } from "lucide-react"
+import { Plus, Calendar, Cloud, FolderOpen, Users, GitBranch, ArrowLeft, Settings, Terminal, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -19,30 +19,23 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { ModeToggle } from "@/components/mode-toggle"
-
-interface Project {
-  id: string
-  name: string
-  description: string
-  provider: "aws" | "azure" | "gcp"
-  createdAt: Date
-  lastModified: Date
-}
-
-interface Workspace {
-  id: string
-  name: string
-  environment: string
-  description: string
-  createdAt: Date
-  lastModified: Date
-}
-
+import { apiClient, type Project, type Workspace } from "@/lib/api"
 interface ProjectDashboardProps {
   projectId: string
 }
 
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const PROVIDER_NAME_MAP: Record<number, "aws" | "azure" | "gcp"> = {
+  1: "aws",
+  2: "azure",
+  3: "gcp",
+}
+
 export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
+  if (!projectId) {
+    return <div>Invalid project ID</div>;
+  }
+
   const router = useRouter()
   const { toast } = useToast()
   const [project, setProject] = useState<Project | null>(null)
@@ -53,96 +46,157 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
     environment: "",
     description: "",
   })
+  const [isLoading, setIsLoading] = useState(true)
+  const [isWorkspacesLoading, setIsWorkspacesLoading] = useState(true)
+  const [isWorkspaceCreating, setIsWorkspaceCreating] = useState(false)
 
+  console.log('PROJECT:',project);
   useEffect(() => {
-    // Load project data
-    const savedProjects = localStorage.getItem("terraform-projects")
-    if (savedProjects) {
-      const projects = JSON.parse(savedProjects).map((p: any) => ({
-        ...p,
-        createdAt: new Date(p.createdAt),
-        lastModified: new Date(p.lastModified),
-      }))
-      const currentProject = projects.find((p: Project) => p.id === projectId)
-      if (currentProject) {
-        setProject(currentProject)
-      } else {
-        router.push("/projects")
-        return
+    const fetchProject = async () => {
+      setIsLoading(true)
+      try {
+        const response = await fetch(`${apiUrl}/projects/${projectId}`)
+        console.log('PROJET RESPONSE', response.json);
+        if (!response.ok) throw new Error("Failed to fetch project")
+        const p = await response.json()
+        setProject({
+          ...p,
+          id: p.project_id,
+          name: p.project_name,
+          provider: PROVIDER_NAME_MAP[p.cloud_provider_id] || "aws",
+          createdAt: p.created_at ? new Date(p.created_at) : null,
+          lastModified: p.last_modified ? new Date(p.last_modified) : null,
+        })
+      } catch (err) {
+        // fallback to localStorage if API fails
+        const savedProjects = localStorage.getItem("terraform-projects")
+        if (savedProjects) {
+          const projects = JSON.parse(savedProjects).map((p: any) => ({
+            ...p,
+            id: p.project_id,
+            createdAt: p.createdAt ? new Date(p.createdAt) : null,
+            lastModified: p.lastModified ? new Date(p.lastModified) : null,
+          }))
+          const currentProject = projects.find((p: Project) => String(p.id) === String(projectId))
+          if (currentProject) {
+            setProject(currentProject)
+          } else {
+            router.push("/projects")
+            return
+          }
+        } else {
+          router.push("/projects")
+          return
+        }
       }
-    } else {
-      router.push("/projects")
-      return
+      setIsLoading(false)
     }
+    fetchProject()
 
-    // Load workspaces for this project
-    const savedWorkspaces = localStorage.getItem(`terraform-workspaces-${projectId}`)
-    if (savedWorkspaces) {
-      const parsedWorkspaces = JSON.parse(savedWorkspaces).map((w: any) => ({
-        ...w,
-        createdAt: new Date(w.createdAt),
-        lastModified: new Date(w.lastModified),
-      }))
-      setWorkspaces(parsedWorkspaces)
-    } else {
-      // Create default workspaces
-      const defaultWorkspaces: Workspace[] = [
-        {
-          id: "dev",
-          name: "Development",
-          environment: "dev",
-          description: "Development environment for testing new features",
-          createdAt: new Date(),
-          lastModified: new Date(),
-        },
-        {
-          id: "staging",
-          name: "Staging",
-          environment: "staging",
-          description: "Staging environment for pre-production testing",
-          createdAt: new Date(),
-          lastModified: new Date(),
-        },
-      ]
-      setWorkspaces(defaultWorkspaces)
-      localStorage.setItem(`terraform-workspaces-${projectId}`, JSON.stringify(defaultWorkspaces))
-    }
+    // Fetch workspaces for this project from backend
+    const fetchWorkspaces = async () => {
+      setIsWorkspacesLoading(true);
+      try {
+        const response = await fetch(`${apiUrl}/workspaces/project/${projectId}`);
+        if (!response.ok) throw new Error("Failed to fetch workspaces");
+        const backendWorkspaces = await response.json();
+        const mappedWorkspaces = backendWorkspaces.map((w: any) => ({
+          ...w,
+          id: w.workspace_id ? String(w.workspace_id) : String(Date.now()),
+          name: w.workspace_name,
+          environment: w.environment,
+          description: w.description,
+          createdAt: w.created_at ? new Date(w.created_at) : new Date(),
+          lastModified: w.last_modified ? new Date(w.last_modified) : new Date(),
+        }));
+        setWorkspaces(mappedWorkspaces);
+        localStorage.setItem(`terraform-workspaces-${projectId}`, JSON.stringify(mappedWorkspaces));
+      } catch (err) {
+        // fallback to localStorage if API fails
+        const savedWorkspaces = localStorage.getItem(`terraform-workspaces-${projectId}`);
+        if (savedWorkspaces) {
+          const parsedWorkspaces = JSON.parse(savedWorkspaces).map((w: any) => ({
+            ...w,
+            createdAt: new Date(w.createdAt),
+            lastModified: new Date(w.lastModified),
+          }));
+          setWorkspaces(parsedWorkspaces);
+        }
+      }
+      setIsWorkspacesLoading(false);
+    };
+    fetchWorkspaces();
   }, [projectId, router])
 
-  const handleCreateWorkspace = () => {
-    if (!newWorkspace.name.trim() || !newWorkspace.environment.trim()) {
+  const handleCreateWorkspace = async () => {
+    if (!newWorkspace.name.trim() ) {
       toast({
         title: "Required fields missing",
-        description: "Please enter both name and environment.",
+        description: "Please enter Workspace name",
         variant: "destructive",
       })
       return
     }
-
-    const workspace: Workspace = {
-      id: Date.now().toString(),
-      name: newWorkspace.name,
-      environment: newWorkspace.environment.toLowerCase(),
-      description: newWorkspace.description,
-      createdAt: new Date(),
-      lastModified: new Date(),
+    if (!project) {
+      toast({
+        title: "Project not loaded",
+        description: "Project information is missing. Please try again later.",
+        variant: "destructive",
+      })
+      return
     }
-
-    const updatedWorkspaces = [...workspaces, workspace]
-    setWorkspaces(updatedWorkspaces)
-    localStorage.setItem(`terraform-workspaces-${projectId}`, JSON.stringify(updatedWorkspaces))
-
-    setIsCreating(false)
-    setNewWorkspace({ name: "", environment: "", description: "" })
-
-    toast({
-      title: "Workspace created",
-      description: `Workspace "${workspace.name}" has been created successfully.`,
-      variant: "default",
-    })
+    setIsWorkspaceCreating(true)
+    try {
+      const response = await fetch(`${apiUrl}/workspaces/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_name: newWorkspace.name,
+          project_id: project.id,
+          environment: newWorkspace.environment,
+          description: newWorkspace.description,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Backend error response:", errorText);
+        throw new Error("Failed to create workspace");
+      }
+      const createdWorkspace = await response.json();
+      const mappedWorkspace = {
+        ...createdWorkspace,
+        id: createdWorkspace.workspace_id ? String(createdWorkspace.workspace_id) : String(Date.now()),
+        name: createdWorkspace.workspace_name,
+        environment: createdWorkspace.environment || "",
+        description: createdWorkspace.description,
+        createdAt: createdWorkspace.created_at ? new Date(createdWorkspace.created_at) : new Date(),
+        lastModified: createdWorkspace.last_modified ? new Date(createdWorkspace.last_modified) : new Date(),
+      };
+      const updatedWorkspaces = [...workspaces, mappedWorkspace];
+      setWorkspaces(updatedWorkspaces);
+      localStorage.setItem(`terraform-workspaces-${project.id}`, JSON.stringify(updatedWorkspaces));
+      setIsCreating(false);
+      setNewWorkspace({ name: "", environment: "", description: "" });
+      toast({
+        title: "Workspace created",
+        description: `Workspace "${mappedWorkspace.name}" has been created successfully.`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Failed to create workspace. Please try again.",
+        variant: "destructive",
+      });
+    }
+    setIsWorkspaceCreating(false)
   }
 
-  const getEnvironmentColor = (env: string) => {
+  const getEnvironmentColor = (env: string | undefined) => {
+    if (!env) return "bg-gray-100 text-gray-800 border-gray-200";
     switch (env.toLowerCase()) {
       case "dev":
       case "development":
@@ -161,41 +215,21 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
     }
   }
 
-  if (!project) {
-    return <div>Loading...</div>
+  if (isLoading || !project) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+        <span className="ml-2 text-muted-foreground">Loading project...</span>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link href="/projects">
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
-              <div className="flex items-center space-x-2">
-                <Terminal className="h-6 w-6 text-primary" />
-                <h1 className="text-xl font-semibold">{project.name}</h1>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <ModeToggle />
-              <Link href="/settings">
-                <Settings className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-foreground transition-colors" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="px-4 py-8 ">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">{project.name}</h1>
-          <p className="text-muted-foreground">{project.description || "Project workspaces and environments"}</p>
+          <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+          {/* <p className="text-muted-foreground text-xs">{project.description || "Project workspaces and environments"}</p> */}
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
@@ -228,7 +262,7 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{project.createdAt.toLocaleDateString()}</div>
+              <div className="text-2xl font-bold">{project.createdAt?.toLocaleDateString() || "N/A"}</div>
               <p className="text-xs text-muted-foreground">Project creation date</p>
             </CardContent>
           </Card>
@@ -243,7 +277,7 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
                   <GitBranch className="h-5 w-5" />
                   Workspaces
                 </CardTitle>
-                <CardDescription>Manage different environments for your infrastructure project.</CardDescription>
+                <CardDescription className="text-xs py-1">Manage different environments for your infrastructure project.</CardDescription>
               </div>
               <Dialog open={isCreating} onOpenChange={setIsCreating}>
                 <DialogTrigger asChild>
@@ -252,35 +286,27 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
                     New Workspace
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="space-y-2">
                   <DialogHeader>
-                    <DialogTitle>Create New Workspace</DialogTitle>
-                    <DialogDescription>Set up a new environment for your project.</DialogDescription>
+                    <DialogTitle className="text-center">Create New Workspace</DialogTitle>
+                    <DialogDescription className="text-center text-xs">Set up a new environment for your project.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="workspace-name">Workspace Name</Label>
                       <Input
                         id="workspace-name"
-                        placeholder="Production Environment"
+                        placeholder="eg.Prod/Dev/QA"
                         value={newWorkspace.name}
                         onChange={(e) => setNewWorkspace({ ...newWorkspace, name: e.target.value })}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="workspace-env">Environment</Label>
-                      <Input
-                        id="workspace-env"
-                        placeholder="prod"
-                        value={newWorkspace.environment}
-                        onChange={(e) => setNewWorkspace({ ...newWorkspace, environment: e.target.value })}
-                      />
-                    </div>
+              
                     <div className="space-y-2">
                       <Label htmlFor="workspace-description">Description (Optional)</Label>
                       <Input
                         id="workspace-description"
-                        placeholder="Production environment for live deployment"
+                        placeholder="eg.Production environment for live deployment"
                         value={newWorkspace.description}
                         onChange={(e) => setNewWorkspace({ ...newWorkspace, description: e.target.value })}
                       />
@@ -290,45 +316,55 @@ export function ProjectDashboard({ projectId }: ProjectDashboardProps) {
                     <Button variant="outline" onClick={() => setIsCreating(false)}>
                       Cancel
                     </Button>
-                    <Button onClick={handleCreateWorkspace}>Create Workspace</Button>
+                    <Button onClick={handleCreateWorkspace} disabled={isWorkspaceCreating}>
+                      {isWorkspaceCreating ? (
+                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      ) : null}
+                      {isWorkspaceCreating ? "Creating..." : "Create Workspace"}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {workspaces.map((workspace) => (
-                <Link key={workspace.id} href={`/projects/${projectId}/workspaces/${workspace.id}`}>
-                  <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-primary/20">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{workspace.name}</CardTitle>
-                        <span
-                          className={`px-2 py-1 text-xs font-medium rounded-full border ${getEnvironmentColor(
-                            workspace.environment,
-                          )}`}
-                        >
-                          {workspace.environment}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {workspace.description || "No description provided"}
-                      </p>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Modified {workspace.lastModified.toLocaleDateString()}</span>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          <span>Active</span>
+            {isWorkspacesLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Loading workspaces...</span>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {workspaces.map((workspace) => (
+                  <Link key={workspace.id} href={`/projects/${project.id}/workspaces/${workspace.id}`}>
+                    <Card className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-primary/20">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg">{workspace.name}</CardTitle>
+                          <span
+                            className={`px-2 py-1 text-xs font-medium rounded-full border ${getEnvironmentColor(workspace.environment)}`}
+                          >
+                            {workspace.environment}
+                          </span>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          {workspace.description || "No description provided"}
+                        </p>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Modified {workspace.lastModified.toLocaleDateString()}</span>
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            <span>Active</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

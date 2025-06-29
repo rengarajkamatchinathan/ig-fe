@@ -12,14 +12,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading) {
       if (isAuthenticated) {
-        // Check if credentials are already set up
-        const hasCredentials = localStorage.getItem("terraform-credentials-setup")
-
-        if (hasCredentials) {
-          router.push("/projects")
-        } else {
-          router.push("/credentials")
-        }
+        router.push("/credentials")
       } else {
         router.push("/login")
       }

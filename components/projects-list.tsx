@@ -8,7 +8,7 @@ import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FolderPlus, Plus, Trash2, Search, Cloud, Settings, Terminal } from "lucide-react"
+import { FolderPlus, Plus, Trash2, Search, Cloud, Settings, Terminal, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ModeToggle } from "@/components/mode-toggle"
+import ReactMarkdown from "react-markdown"
 
 interface Project {
   id: string
@@ -31,44 +32,77 @@ interface Project {
   lastModified: Date
 }
 
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+const PROVIDER_ID_MAP: Record<"aws" | "azure" | "gcp", number> = {
+  aws: 1,
+  azure: 2,
+  gcp: 3,
+};
+
+const PROVIDER_NAME_MAP: Record<number, "aws" | "azure" | "gcp"> = {
+  1: "aws",
+  2: "azure",
+  3: "gcp",
+};
+
 export function ProjectsList() {
   const router = useRouter()
   const { toast } = useToast()
   const [projects, setProjects] = useState<Project[]>([])
-  const [credentials, setCredentials] = useState<any>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [newProject, setNewProject] = useState({
     name: "",
     description: "",
     provider: "aws" as "aws" | "azure" | "gcp",
+    state_bucket:""
   })
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check for credentials
-    const savedCredentials = localStorage.getItem("terraform-credentials")
-    if (!savedCredentials) {
-      router.push("/")
-      return
+    // Fetch projects from backend
+    const fetchProjects = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${apiUrl}/projects`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+        if (!response.ok) throw new Error("Failed to fetch projects")
+        const backendProjects = await response.json()
+        console.log("Backend projects:", backendProjects);
+        // Map backend fields to frontend fields
+        const mappedProjects = backendProjects.map((p: any) => ({
+          ...p,
+          id: p.project_id,
+          name: p.project_name,
+          provider: PROVIDER_NAME_MAP[p.cloud_provider_id] || "aws",
+          createdAt: p.created_at ? new Date(p.created_at) : null,
+          lastModified: p.last_modified ? new Date(p.last_modified) : null,
+        }));
+        setProjects(mappedProjects)
+        localStorage.setItem("terraform-projects", JSON.stringify(mappedProjects))
+      } catch (err) {
+        // Fallback to localStorage if API fails
+        const savedProjects = localStorage.getItem("terraform-projects")
+        if (savedProjects) {
+          const parsedProjects = JSON.parse(savedProjects).map((p: any) => ({
+            ...p,
+            createdAt: p.createdAt ? new Date(p.createdAt) : null,
+            lastModified: p.lastModified ? new Date(p.lastModified) : null,
+          }))
+          setProjects(parsedProjects)
+        }
+      }
+      setIsLoading(false);
     }
-
-    const creds = JSON.parse(savedCredentials)
-    setCredentials(creds)
-    setNewProject((prev) => ({ ...prev, provider: creds.provider || "aws" }))
-
-    // Load projects from localStorage
-    const savedProjects = localStorage.getItem("terraform-projects")
-    if (savedProjects) {
-      const parsedProjects = JSON.parse(savedProjects).map((p: any) => ({
-        ...p,
-        createdAt: new Date(p.createdAt),
-        lastModified: new Date(p.lastModified),
-      }))
-      setProjects(parsedProjects)
-    }
+    fetchProjects()
   }, [router])
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!newProject.name.trim()) {
       toast({
         title: "Project name required",
@@ -78,27 +112,56 @@ export function ProjectsList() {
       return
     }
 
-    const project: Project = {
-      id: Date.now().toString(),
-      name: newProject.name,
-      description: newProject.description,
-      provider: newProject.provider,
-      createdAt: new Date(),
-      lastModified: new Date(),
+    try {
+      const response = await fetch(`${apiUrl}/projects`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          project_name: newProject.name,
+          owner_id: 1, // TODO: Replace with actual user ID
+          cloud_provider_id: PROVIDER_ID_MAP[newProject.provider],
+          org_id: 1, // TODO: Replace with actual org ID
+          state_bucket: newProject.state_bucket || null,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to create project")
+      }
+
+      const createdProject = await response.json()
+
+      // Map backend fields to frontend fields
+      const mappedProject = {
+        ...createdProject,
+        id: createdProject.project_id,
+        name: createdProject.project_name, // map project_name to name
+        provider: newProject.provider,     // ensure provider is set for display
+        createdAt: new Date(createdProject.createdAt),
+        lastModified: new Date(createdProject.lastModified),
+      }
+
+      const updatedProjects = [...projects, mappedProject]
+      setProjects(updatedProjects)
+      localStorage.setItem("terraform-projects", JSON.stringify(updatedProjects))
+
+      setIsCreating(false)
+      setNewProject({ name: "", description: "", provider: "aws", state_bucket: "" })
+
+      toast({
+        title: "Project created",
+        description: `Project "${createdProject.project_name}" has been created successfully.`,
+        variant: "default",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create project. Please try again.",
+        variant: "destructive",
+      })
     }
-
-    const updatedProjects = [...projects, project]
-    setProjects(updatedProjects)
-    localStorage.setItem("terraform-projects", JSON.stringify(updatedProjects))
-
-    setIsCreating(false)
-    setNewProject({ name: "", description: "", provider: credentials?.provider || "aws" })
-
-    toast({
-      title: "Project created",
-      description: `Project "${project.name}" has been created successfully.`,
-      variant: "default",
-    })
   }
 
   const handleDeleteProject = (projectId: string, e: React.MouseEvent) => {
@@ -118,12 +181,17 @@ export function ProjectsList() {
 
   const filteredProjects = projects.filter(
     (project) =>
-      project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchQuery.toLowerCase()),
+      (project.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (project.description || "").toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  if (!credentials) {
-    return <div>Loading...</div>
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full w-full">
+        <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+        <span className="ml-2 text-muted-foreground">Loading projects...</span>
+      </div>
+    );
   }
 
   return (
@@ -215,8 +283,8 @@ export function ProjectsList() {
               </div>
             ) : (
               <div className="p-2 space-y-1">
-                {filteredProjects.map((project) => (
-                  <Link key={project.id} href={`/projects/${project.id}`}>
+                {filteredProjects.map((project, idx) => (
+                  <Link key={project.id || idx} href={`/projects/${project.id}`}>
                     <div className="p-3 rounded-lg hover:bg-accent cursor-pointer group transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
@@ -229,10 +297,12 @@ export function ProjectsList() {
                           <div className="flex items-center gap-2 mt-2">
                             <span className="inline-flex items-center gap-1 text-xs bg-secondary px-2 py-1 rounded">
                               <Cloud className="h-3 w-3" />
-                              {project.provider.toUpperCase()}
+                              {project.provider}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {project.createdAt.toLocaleDateString()}
+                              {project.createdAt && !isNaN(project.createdAt.getTime())
+                                ? project.createdAt.toLocaleDateString()
+                                : "-"}
                             </span>
                           </div>
                         </div>

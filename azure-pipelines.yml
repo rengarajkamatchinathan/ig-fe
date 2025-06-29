@@ -1,0 +1,164 @@
+trigger:
+  branches:
+    include:
+      - Feature/FrontEnd/Pipeline
+
+variables:
+  imageName: 'Infra-genie-frontend' # your image name (repository name in ACR)
+  webAppName: 'infra-genie' # your Web App name
+  resourceGroup: 'rg-dev-infragenie' # your resource group name
+  imageTag: '$(Build.BuildId)' # unique tag per build
+
+pool:
+  name: 'Self-hosted Pipelines Pool'   
+  demands:
+    - Agent.Name -equals Synergech-Agent 
+
+stages:
+  # --------------------
+  - stage: BuildAndPush
+    displayName: 'Build and Push Docker Image'
+    jobs:
+      - job: Push
+        displayName: 'Build and Push Docker Image to ACR'
+        steps:
+          - checkout: self
+          - task: Docker@2
+            displayName: 'Build Docker Image'
+            inputs:
+              containerRegistry: 'Sc_for_Azure container_registry'
+              repository: '$(imageName)'
+              command: 'build'
+              Dockerfile: '**/Dockerfile'
+              tags: '$(imageTag)'
+
+          - task: Docker@2
+            displayName: 'Push Docker Image to ACR'
+            inputs:
+              containerRegistry: 'Sc_for_Azure container_registry'
+              repository: '$(imageName)'
+              command: 'push'
+              tags: '$(imageTag)'
+
+--------------------
+- stage: Deploy
+ displayName: 'Deploy to Azure Web App for Containers'
+ dependsOn: BuildAndPush
+ jobs:
+ - job: Deploy
+   displayName: 'Deploy to Web App'
+   steps:
+   - task: AzureWebAppContainer@1
+     displayName: 'Deploy image to Web App'
+     inputs:
+       azureSubscription: 'SC_for_Synergech_products'   # same service connection
+       appName: '$(webAppName)'
+       resourceGroupName: '$(resourceGroup)'
+       containers: '$(acrName).azurecr.io/$(imageName):$(imageTag)'
+
+
+
+# trigger:
+#  branches:
+#     include:
+#       - main
+      
+
+# pool:
+#   name: 'Self-hosted Pipelines Pool'   
+#   demands:
+#     - Agent.Name -equals Synergech-Agent 
+
+
+# variables:
+#   imageName: 'qp_frontend_image'  # Name of your Docker image
+
+# stages:
+# - stage: Build
+#   displayName: 'Build Docker Image'
+#   jobs:
+#   - job: Build
+#     displayName: 'Build Docker Image'
+#     steps:
+#     - script: docker --version
+#       displayName: 'Check Docker Version'
+
+#     - task: Docker@2
+#       displayName: 'Build Docker Image'
+#       inputs:
+#         containerRegistry: 'Sc_for_Azure container_registry'
+#         repository: '$(imageName)'
+#         command: 'build'
+#         Dockerfile: '**/dockerfile'
+#         tags: 'latest'
+          
+# - stage: Push
+#   displayName: 'Push Docker Image'
+#   jobs:
+#   - job: Push
+#     displayName: 'Push Docker Image'
+#     steps:
+#     - task: Docker@2
+#       displayName: 'Push Docker Image'
+#       inputs:
+#         containerRegistry: 'Sc_for_Azure container_registry'
+#         repository: '$(imageName)'
+#         command: 'push'
+#         tags: 'latest'
+
+# - stage: Deploy
+#   displayName: 'Deploy to Azure App Service'
+#   jobs:
+#   - job: Deploy
+#     displayName: 'Deploy Docker Image'
+#     steps:
+#     - task: AzureWebAppContainer@1
+#       inputs:
+#         azureSubscription: 'SC_for_Synergech_products'
+#         appName: 'qp-genie'
+#         containers: 'qpgeniecontainerregistry.azurecr.io/$(imageName):latest'
+
+
+# trigger: none
+
+# pool: Self-Hosted Pipelines Pool
+
+# steps:
+# - task: NodeTool@0
+#   inputs:
+#     versionSpec: '20'
+#   displayName: 'Install Node.js'
+
+# - script: |
+#     npm install
+#   displayName: 'npm install'
+
+# - script: |
+#     npm run build
+#   displayName: 'npm build'
+
+# - task: ArchiveFiles@1
+#   inputs:
+#     rootFolder: '$(Build.SourcesDirectory)/dist'
+#     includeRootFolder: true
+#     archiveType: 'default'
+#     archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+#     replaceExistingArchive: true
+#   displayName: 'Archive files'
+
+# - task: PublishBuildArtifacts@1
+#   inputs:
+#     PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+#     ArtifactName: 'drop'
+#     publishLocation: 'Container'
+#   displayName: 'Publish build artifacts'
+
+# - task: AzureWebApp@1
+#   inputs:
+#     azureSubscription: 'spSynAzDevOps'
+#     appType: 'webApp'
+#     appName: 'qp-generator-web-app'
+#     package: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+#     deploymentMethod: 'auto'
+#   displayName: 'Deploy Web App'
+

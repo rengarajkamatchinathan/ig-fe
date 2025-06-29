@@ -6,6 +6,7 @@ import { createContext, useContext, useState, useEffect } from "react"
 interface User {
   email: string
   name: string
+  org_id?: number
 }
 
 interface AuthContextType {
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const payload = JSON.parse(atob(tokenParts[1]))
 
           // Check if token is expired
-          if (payload.exp > Date.now()) {
+          if (payload.exp * 1000 > Date.now()) {
             setToken(savedToken)
             setUser(JSON.parse(savedUser))
             setIsAuthenticated(true)
